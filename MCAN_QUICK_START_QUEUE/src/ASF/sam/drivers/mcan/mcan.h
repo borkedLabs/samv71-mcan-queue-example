@@ -668,7 +668,7 @@ static inline void mcan_get_config_defaults(
 
 void mcan_init(struct mcan_module *const module_inst, Mcan *hw,
 		struct mcan_config *config);
-void mcan_set_baudrate(Mcan *hw, uint32_t baudrate);
+void mcan_set_baudrate(Mcan *hw, uint32_t nbrp, uint32_t nsjw, uint32_t ntseg1, uint32_t ntseg2);
 void mcan_fd_set_baudrate(Mcan *hw, uint32_t baudrate);
 void mcan_start(struct mcan_module *const module_inst);
 void mcan_stop(struct mcan_module *const module_inst);

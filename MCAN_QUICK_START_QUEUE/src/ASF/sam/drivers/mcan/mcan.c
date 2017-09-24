@@ -165,6 +165,7 @@ static void _mcan_set_configuration(Mcan *hw, struct mcan_config *config)
 			MCAN_BTP_SJW(CONF_MCAN_NBTP_NSJW_VALUE) |
 			MCAN_BTP_TSEG1(CONF_MCAN_NBTP_NTSEG1_VALUE) |
 			MCAN_BTP_TSEG2(CONF_MCAN_NBTP_NTSEG2_VALUE);
+	mcan_set_baudrate(hw, CONF_MCAN_NBTP_NBRP_VALUE, CONF_MCAN_NBTP_NSJW_VALUE, CONF_MCAN_NBTP_NTSEG1_VALUE, CONF_MCAN_NBTP_NTSEG2_VALUE);
 	hw->MCAN_FBTP = MCAN_FBTP_FBRP(CONF_MCAN_FBTP_FBRP_VALUE) |
 			MCAN_FBTP_FSJW(CONF_MCAN_FBTP_FSJW_VALUE) |
 			MCAN_FBTP_FTSEG1(CONF_MCAN_FBTP_FTSEG1_VALUE) |
@@ -285,23 +286,18 @@ void mcan_init(struct mcan_module *const module_inst, Mcan *hw,
 /**
  * \brief Set MCAN baudrate.
  *
- * \param[in]  hw          Pointer to the MCAN module instance
- * \param[in]  baudrate    MCAN baudrate
+ * \param[in]  module_inst  Pointer to the MCAN module instance
+ * \param[in]  nbrp			MCAN baudrate clock divider
+ * \param[in]  nsjw			MCAN sync jump width
+ * \param[in]  ntseg1		MCAN segment 1 size
+ * \param[in]  ntseg2		MCAN segment 2 size
  */
-void mcan_set_baudrate(Mcan *hw, uint32_t baudrate)
+void mcan_set_baudrate(Mcan *hw, uint32_t nbrp, uint32_t nsjw, uint32_t ntseg1, uint32_t ntseg2)
 {
-	uint32_t gclk_mcan_value;
-	uint32_t mcan_nbtp_nbrp_value;
-	uint32_t mcan_nbtp_nsgw_value = 3, mcan_nbtp_ntseg1_value = 10, mcan_nbtp_ntseg2_value = 7;
-
-	gclk_mcan_value = sysclk_get_peripheral_hz();
-
-	mcan_nbtp_nbrp_value = gclk_mcan_value / baudrate / (3 + mcan_nbtp_ntseg1_value + mcan_nbtp_ntseg2_value);
-	
-	hw->MCAN_BTP = MCAN_BTP_BRP(mcan_nbtp_nbrp_value) |
-			MCAN_BTP_SJW(mcan_nbtp_nsgw_value) |
-			MCAN_BTP_TSEG1(mcan_nbtp_ntseg1_value) |
-			MCAN_BTP_TSEG2(mcan_nbtp_ntseg2_value);
+	hw->MCAN_BTP = MCAN_BTP_BRP(nbrp) |
+		MCAN_BTP_SJW(nsjw) |
+		MCAN_BTP_TSEG1(ntseg1) |
+		MCAN_BTP_TSEG2(ntseg2);
 }
 
 /**
