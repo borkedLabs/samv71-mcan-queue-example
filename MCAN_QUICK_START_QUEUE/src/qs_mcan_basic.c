@@ -165,12 +165,14 @@ static void configure_mcan(struct mcan_module* mcan_mod)
 	mcan_start(mcan_mod);
 }
 
+/**
+ * \brief Configure FIFO1 on the peripheral to accept all extended messages
+ */
 static void configure_mcan_fifo(struct mcan_module* mcan_mod)
 {
 	/*  
 	 *  Setup rx filtering to accept messages into FIFO1 with extended format
-	 *  its confusing but ASF configures FIFO1 for extended messages by default
-	 *  this config accepts all messages
+	 *  this accepts all messages
 	 */
 	struct mcan_extended_message_filter_element et_filter;
 	mcan_get_extended_message_filter_element_default(&et_filter);
@@ -215,7 +217,6 @@ static bool mcan_send_message(struct mcan_module* mcan_mod, uint32_t id_value, u
 	mcan_tx_transfer_request(mcan_mod, (1 << put_index));
 
 	return true;
-
 }
 
 
@@ -241,6 +242,8 @@ static bool mcan_get_message(struct mcan_module* mcan_mod, uint32_t* id_value, u
 		mcan_rx_fifo_acknowledge(mcan_mod, MCAN_RX_FIFO_NUMBER, get_index);
 
 		*id_value = rx_element_fifo_1.R0.bit.ID;
+
+		//data overflow check
 		if( rx_element_fifo_1.R1.bit.DLC < *data_length ) {
 			*data_length = rx_element_fifo_1.R1.bit.DLC;
 		}
