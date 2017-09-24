@@ -116,18 +116,13 @@ static struct mcan_module mcan_instance;
 #define MCAN_RX_EXTENDED_FILTER_ID_1     0x10000096
 
 
-/* mcan_transfer_message_setting */
-#define MCAN_TX_BUFFER_INDEX    0
-static uint8_t tx_message_0[CONF_MCAN_ELEMENT_DATA_SIZE];
-static uint8_t tx_message_1[CONF_MCAN_ELEMENT_DATA_SIZE];
+#define MCAN_RX_FIFO_NUMBER	1
 
 
 /* mcan_receive_message_setting */
 static volatile uint32_t standard_receive_index = 0;
 static volatile uint32_t extended_receive_index = 0;
-static struct mcan_rx_element_fifo_0 rx_element_fifo_0;
 static struct mcan_rx_element_fifo_1 rx_element_fifo_1;
-static struct mcan_rx_element_buffer rx_element_buffer;
 
 /**
  * \brief Configure UART console.
@@ -154,150 +149,110 @@ static void configure_console(void)
  * \brief MCAN module initialization.
  *
  */
-static void configure_mcan(void)
+static void configure_mcan(struct mcan_module* mcan_mod)
 {
-	uint32_t i;
-	/* Initialize the memory. */
-	for (i = 0; i < CONF_MCAN_ELEMENT_DATA_SIZE; i++) {
-		tx_message_0[i] = i;
-		tx_message_1[i] = i + 0x80;
-	}
-
 	/* Initialize the module. */
 	struct mcan_config config_mcan;
 	mcan_get_config_defaults(&config_mcan);
-	mcan_init(&mcan_instance, MCAN_MODULE, &config_mcan);
+	mcan_init(mcan_mod, MCAN_MODULE, &config_mcan);
 
 
-	mcan_start(&mcan_instance);
 	/* Enable interrupts for this MCAN module */
 	irq_register_handler(MCAN1_IRQn, 1);
 	mcan_enable_interrupt(&mcan_instance, MCAN_FORMAT_ERROR | MCAN_ACKNOWLEDGE_ERROR | MCAN_BUS_OFF);
-
-
+	
+			
+	mcan_start(mcan_mod);
 }
 
-/**
- * \brief set receive standard MCAN ID, dedicated buffer
- *
- */
-static void mcan_set_standard_filter_0(void)
+static void configure_mcan_fifo(struct mcan_module* mcan_mod)
 {
-	struct mcan_standard_message_filter_element sd_filter;
-
-	mcan_get_standard_message_filter_element_default(&sd_filter);
-	sd_filter.S0.bit.SFID2 = MCAN_RX_STANDARD_FILTER_ID_0_BUFFER_INDEX;
-	sd_filter.S0.bit.SFID1 = MCAN_RX_STANDARD_FILTER_ID_0;
-	sd_filter.S0.bit.SFEC =
-			MCAN_STANDARD_MESSAGE_FILTER_ELEMENT_S0_SFEC_STRXBUF_Val;
-
-	mcan_set_rx_standard_filter(&mcan_instance, &sd_filter,
-			MCAN_RX_STANDARD_FILTER_INDEX_0);
-	mcan_enable_interrupt(&mcan_instance, MCAN_RX_BUFFER_NEW_MESSAGE);
-}
-
-/**
- * \brief set receive standard MCAN ID,FIFO buffer.
- *
- */
-static void mcan_set_standard_filter_1(void)
-{
-	struct mcan_standard_message_filter_element sd_filter;
-
-	mcan_get_standard_message_filter_element_default(&sd_filter);
-	sd_filter.S0.bit.SFID1 = MCAN_RX_STANDARD_FILTER_ID_1;
-
-	mcan_set_rx_standard_filter(&mcan_instance, &sd_filter,
-			MCAN_RX_STANDARD_FILTER_INDEX_1);
-	mcan_enable_interrupt(&mcan_instance, MCAN_RX_FIFO_0_NEW_MESSAGE);
-}
-
-/**
- * \brief set receive extended MCAN ID, dedicated buffer
- *
- */
-static void mcan_set_extended_filter_0(void)
-{
+	/*  
+	 *  Setup rx filtering to accept messages into FIFO1 with extended format
+	 *  its confusing but ASF configures FIFO1 for extended messages by default
+	 *  this config accepts all messages
+	 */
 	struct mcan_extended_message_filter_element et_filter;
-
 	mcan_get_extended_message_filter_element_default(&et_filter);
-	et_filter.F0.bit.EFID1 = MCAN_RX_EXTENDED_FILTER_ID_0;
-	et_filter.F0.bit.EFEC =
-			MCAN_EXTENDED_MESSAGE_FILTER_ELEMENT_F0_EFEC_STRXBUF_Val;
-	et_filter.F1.bit.EFID2 = MCAN_RX_EXTENDED_FILTER_ID_0_BUFFER_INDEX;
-
-	mcan_set_rx_extended_filter(&mcan_instance, &et_filter,
-			MCAN_RX_EXTENDED_FILTER_INDEX_0);
-	mcan_enable_interrupt(&mcan_instance, MCAN_RX_BUFFER_NEW_MESSAGE);
+	et_filter.F1.reg = MCAN_EXTENDED_MESSAGE_FILTER_ELEMENT_F1_EFID2(0) |
+			MCAN_EXTENDED_MESSAGE_FILTER_ELEMENT_F1_EFT_CLASSIC;
+	mcan_set_rx_extended_filter(mcan_mod, &et_filter, 0);
 }
 
 /**
- * \brief set receive extended MCAN ID,FIFO buffer.
+ * \brief Queues up a packet for transmission.
  *
- */
-static void mcan_set_extended_filter_1(void)
-{
-	struct mcan_extended_message_filter_element et_filter;
-
-	mcan_get_extended_message_filter_element_default(&et_filter);
-	et_filter.F0.bit.EFID1 = MCAN_RX_EXTENDED_FILTER_ID_1;
-
-	mcan_set_rx_extended_filter(&mcan_instance, &et_filter,
-			MCAN_RX_EXTENDED_FILTER_INDEX_1);
-	mcan_enable_interrupt(&mcan_instance, MCAN_RX_FIFO_1_NEW_MESSAGE);
-}
-
-/**
- * \brief send standard MCAN message,
+ * \param can Pointer to mcan_module that was initialized
+ * \param id_value		Message id value
+ * \param data			Data array to transmit
+ * \param data_length	Length of data to transmit
  *
- *\param id_value standard MCAN ID
- *\param *data  content to be sent
- *\param data_length data length code
+ * \return True if successfully queued (space available), false otherwise
  */
-static void mcan_send_standard_message(uint32_t id_value, uint8_t *data,
-		uint32_t data_length)
+static bool mcan_send_message(struct mcan_module* mcan_mod, uint32_t id_value, uint8_t *data, uint32_t data_length)
 {
-	uint32_t i;
-	struct mcan_tx_element tx_element;
+	uint32_t status = mcan_tx_get_fifo_queue_status(mcan_mod);
 
-	mcan_get_tx_buffer_element_defaults(&tx_element);
-	tx_element.T0.reg |= MCAN_TX_ELEMENT_T0_STANDARD_ID(id_value);
-	tx_element.T1.bit.DLC = data_length;
-	for (i = 0; i < data_length; i++) {
-		tx_element.data[i] = *data;
-		data++;
+	//check if fifo is full
+	if(status & MCAN_TXFQS_TFQF) {
+		return false;
 	}
 
-	mcan_set_tx_buffer_element(&mcan_instance, &tx_element,
-			MCAN_TX_BUFFER_INDEX);
-	mcan_tx_transfer_request(&mcan_instance, 1 << MCAN_TX_BUFFER_INDEX);
-}
+	//get the put index where we put the next packet
+	uint32_t put_index = (status & MCAN_TXFQS_TFQPI_Msk) >> MCAN_TXFQS_TFQPI_Pos;
 
-/**
- * \brief send extended MCAN message,
- *
- *\param id_value extended MCAN ID
- *\param *data  content to be sent
- *\param data_length data length code
- */
-static void mcan_send_extended_message(uint32_t id_value, uint8_t *data,
-		uint32_t data_length)
-{
-	uint32_t i;
 	struct mcan_tx_element tx_element;
-
 	mcan_get_tx_buffer_element_defaults(&tx_element);
-	tx_element.T0.reg |= MCAN_TX_ELEMENT_T0_EXTENDED_ID(id_value) |
-			MCAN_TX_ELEMENT_T0_XTD;
+
+	tx_element.T0.reg |= MCAN_TX_ELEMENT_T0_EXTENDED_ID(id_value) | MCAN_TX_ELEMENT_T0_XTD;
 	tx_element.T1.bit.DLC = data_length;
-	for (i = 0; i < data_length; i++) {
-		tx_element.data[i] = *data;
-		data++;
+
+	for (uint32_t i = 0; i < data_length; i++) {
+		tx_element.data[i] = data[i];
 	}
 
-	mcan_set_tx_buffer_element(&mcan_instance, &tx_element,
-			MCAN_TX_BUFFER_INDEX);
-	mcan_tx_transfer_request(&mcan_instance, 1 << MCAN_TX_BUFFER_INDEX);
+	mcan_set_tx_buffer_element(mcan_mod, &tx_element, put_index);
+	mcan_tx_transfer_request(mcan_mod, (1 << put_index));
+
+	return true;
+
+}
+
+
+/**
+ * \brief Get a packet from the software reception buffer
+ *
+ * \param can Pointer to mcan_module that was initialized
+ * \param id_value		Message id value
+ * \param data			Data array, should be big enough for message, 8 for CAN, 64 for FD. Otherwise data will be dropped on the copy to array (See data_length param)
+ * \param data_length	Data buffer size (set before calling the function), this gets updated in the function call to the actual length of data received if its smaller than the max
+ *
+ * \return True if packet retrieved, false if no packet available
+ */
+static bool mcan_get_message(struct mcan_module* mcan_mod, uint32_t* id_value, uint8_t* data, uint8_t* data_length)
+{
+	uint32_t status = mcan_rx_get_fifo_status(mcan_mod, MCAN_RX_FIFO_NUMBER);
+
+	uint32_t num_elements = status & MCAN_RXF1S_F1FL_Msk;
+	uint32_t get_index = (status & MCAN_RXF1S_F1GI_Msk) >> MCAN_RXF1S_F1GI_Pos;
+
+	if (num_elements > 0) {
+		mcan_get_rx_fifo_1_element(mcan_mod, &rx_element_fifo_1, get_index);
+		mcan_rx_fifo_acknowledge(mcan_mod, MCAN_RX_FIFO_NUMBER, get_index);
+
+		*id_value = rx_element_fifo_1.R0.bit.ID;
+		if( rx_element_fifo_1.R1.bit.DLC < *data_length ) {
+			*data_length = rx_element_fifo_1.R1.bit.DLC;
+		}
+
+		for (size_t i = 0; i < *data_length; i++) {
+			data[i] = rx_element_fifo_1.data[i];
+		}
+		
+		return true;
+	}
+
+	return false;
 }
 
 /**
@@ -306,71 +261,14 @@ static void mcan_send_extended_message(uint32_t id_value, uint8_t *data,
  */
 void MCAN1_Handler(void)
 {
-	volatile uint32_t status, i, rx_buffer_index;
+	volatile uint32_t status;
 	status = mcan_read_interrupt_status(&mcan_instance);
-
-	if (status & MCAN_RX_BUFFER_NEW_MESSAGE) {
-		mcan_clear_interrupt_status(&mcan_instance, MCAN_RX_BUFFER_NEW_MESSAGE);
-		for (i = 0; i < CONF_MCAN0_RX_BUFFER_NUM; i++) {
-			if (mcan_rx_get_buffer_status(&mcan_instance, i)) {
-				rx_buffer_index = i;
-				mcan_rx_clear_buffer_status(&mcan_instance, i);
-				mcan_get_rx_buffer_element(&mcan_instance, &rx_element_buffer,
-				rx_buffer_index);
-				if (rx_element_buffer.R0.bit.XTD) {
-					printf("\n\r Extended message received in Rx buffer. The received data is: \r\n");
-				} else {
-					printf("\n\r Standard message received in Rx buffer. The received data is: \r\n");
-				}
-				for (i = 0; i < rx_element_buffer.R1.bit.DLC; i++) {
-					printf("  %d",rx_element_buffer.data[i]);
-				}
-				printf("\r\n\r\n");
-			}
-		}
-	}
-
-	if (status & MCAN_RX_FIFO_0_NEW_MESSAGE) {
-		mcan_clear_interrupt_status(&mcan_instance, MCAN_RX_FIFO_0_NEW_MESSAGE);
-		mcan_get_rx_fifo_0_element(&mcan_instance, &rx_element_fifo_0,
-				standard_receive_index);
-		mcan_rx_fifo_acknowledge(&mcan_instance, 0,
-				standard_receive_index);
-		standard_receive_index++;
-		if (standard_receive_index == CONF_MCAN0_RX_FIFO_0_NUM) {
-			standard_receive_index = 0;
-		}
-
-		printf("\n\r Standard message received in FIFO 0. The received data is: \r\n");
-		for (i = 0; i < rx_element_fifo_0.R1.bit.DLC; i++) {
-			printf("  %d",rx_element_fifo_0.data[i]);
-		}
-		printf("\r\n\r\n");
-	}
-
-	if (status & MCAN_RX_FIFO_1_NEW_MESSAGE) {
-		mcan_clear_interrupt_status(&mcan_instance, MCAN_RX_FIFO_1_NEW_MESSAGE);
-		mcan_get_rx_fifo_1_element(&mcan_instance, &rx_element_fifo_1,
-				extended_receive_index);
-		mcan_rx_fifo_acknowledge(&mcan_instance, 0,
-				extended_receive_index);
-		extended_receive_index++;
-		if (extended_receive_index == CONF_MCAN0_RX_FIFO_1_NUM) {
-			extended_receive_index = 0;
-		}
-
-		printf("\n\r Extended message received in FIFO 1. The received data is: \r\n");
-		for (i = 0; i < rx_element_fifo_1.R1.bit.DLC; i++) {
-			printf("  %d",rx_element_fifo_1.data[i]);
-		}
-		printf("\r\n\r\n");
-	}
 
 	if (status & MCAN_BUS_OFF) {
 		mcan_clear_interrupt_status(&mcan_instance, MCAN_BUS_OFF);
 		mcan_stop(&mcan_instance);
 		printf(": MCAN bus off error, re-initialization. \r\n\r\n");
-		configure_mcan();
+		configure_mcan(&mcan_instance);
 	}
 
 	if (status & MCAN_ACKNOWLEDGE_ERROR) {
@@ -391,14 +289,9 @@ static void display_menu(void)
 {
 	printf("Menu :\r\n"
 			"  -- Select the action:\r\n"
-			"  0: Set standard filter ID 0: 0x45A, store into Rx buffer. \r\n"
-			"  1: Set standard filter ID 1: 0x469, store into Rx FIFO 0. \r\n"
-			"  2: Send standard message with ID: 0x45A and 4 byte data 0 to 3. \r\n"
-			"  3: Send standard message with ID: 0x469 and 4 byte data 128 to 131. \r\n"
-			"  4: Set extended filter ID 0: 0x100000A5, store into Rx buffer. \r\n"
-			"  5: Set extended filter ID 1: 0x10000096, store into Rx FIFO 1. \r\n"
-			"  6: Send extended message with ID: 0x100000A5 and 8 byte data 0 to 7. \r\n"
-			"  7: Send extended message with ID: 0x10000096 and 8 byte data 128 to 135. \r\n"
+			"  0: Send extended message with ID: 0x100000A5 and 8 byte data 0 to 7. \r\n"
+			"  1: Send extended message with ID: 0x10000096 and 8 byte data 128 to 135. \r\n"
+			"  2: Get a received message from the queue and print it if available. \r\n"
 			"  h: Display menu \r\n\r\n");
 }
 
@@ -410,66 +303,54 @@ int main(void)
 	board_init();
 
 	configure_console();
-	configure_mcan();
+	configure_mcan(&mcan_instance);
+	configure_mcan_fifo(&mcan_instance);
 
 	display_menu();
 
-
+	static uint8_t tx_message_0[8] = { 0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7 };
+	static uint8_t tx_message_1[8] = { 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87};
+	
 
 	while(1) {
 		scanf("%c", (char *)&key);
 
 		switch (key) {
-		case 'h':
-			display_menu();
-			break;
+			case 'h':
+				display_menu();
+				break;
 
-		case '0':
-			printf("  0: Set standard filter ID 0: 0x45A, store into Rx buffer. \r\n");
-			mcan_set_standard_filter_0();
-			break;
+			case '0':
+				printf("  0: Send extended message with ID: 0x100000A5 and 8 byte data 0 to 7. \r\n");
+				mcan_send_message(&mcan_instance, MCAN_RX_EXTENDED_FILTER_ID_0, tx_message_0, CONF_MCAN_ELEMENT_DATA_SIZE);
+				break;
 
-		case '1':
-			printf("  1: Set standard filter ID 1: 0x469, store into Rx FIFO 0. \r\n");
-			mcan_set_standard_filter_1();
-			break;
+			case '1':
+				printf("  1: Send extended message with ID: 0x10000096 and 8 byte data 128 to 135. \r\n");
+				mcan_send_message(&mcan_instance, MCAN_RX_EXTENDED_FILTER_ID_1, tx_message_1, CONF_MCAN_ELEMENT_DATA_SIZE);
+				break;
+				
+			case '2': {
+					printf("  2: Get and print one received message. \r\n");
 
-		case '2':
-			printf("  2: Send standard message with ID: 0x45A and 4 byte data 0 to 3. \r\n");
-			mcan_send_standard_message(MCAN_RX_STANDARD_FILTER_ID_0, tx_message_0,
-					CONF_MCAN_ELEMENT_DATA_SIZE / 2);
-			break;
-
-		case '3':
-			printf("  3: Send standard message with ID: 0x469 and 4 byte data 128 to 131. \r\n");
-			mcan_send_standard_message(MCAN_RX_STANDARD_FILTER_ID_1, tx_message_1,
-					CONF_MCAN_ELEMENT_DATA_SIZE / 2);
-			break;
-
-		case '4':
-			printf("  4: Set extended filter ID 0: 0x100000A5, store into Rx buffer. \r\n");
-			mcan_set_extended_filter_0();
-			break;
-
-		case '5':
-			printf("  5: Set extended filter ID 1: 0x10000096, store into Rx FIFO 1. \r\n");
-			mcan_set_extended_filter_1();
-			break;
-
-		case '6':
-			printf("  6: Send extended message with ID: 0x100000A5 and 8 byte data 0 to 7. \r\n");
-			mcan_send_extended_message(MCAN_RX_EXTENDED_FILTER_ID_0, tx_message_0,
-					CONF_MCAN_ELEMENT_DATA_SIZE);
-			break;
-
-		case '7':
-			printf("  7: Send extended message with ID: 0x10000096 and 8 byte data 128 to 135. \r\n");
-			mcan_send_extended_message(MCAN_RX_EXTENDED_FILTER_ID_1, tx_message_1,
-					CONF_MCAN_ELEMENT_DATA_SIZE);
-			break;
-
-		default:
-			break;
+					uint32_t rcvd_msg_id = 0;
+					uint8_t rcvd_data[8];
+					uint8_t rcvd_len = sizeof(rcvd_data);
+					if( mcan_get_message(&mcan_instance, &rcvd_msg_id, rcvd_data, &rcvd_len) ) {
+						printf("\r\nReceived message id %lu, length %u. \r\n", rcvd_msg_id, rcvd_len );
+						
+						printf("The received data is: \r\n");
+						for (int i = 0; i < rcvd_len; i++) {
+							printf("  %d",rcvd_data[i]);
+						}
+						printf("\r\n\r\n");
+					} else {
+						printf("  2: No messages found. \r\n");
+					}
+				}
+				break;
+			default:
+				break;
 		}
 	}
 
