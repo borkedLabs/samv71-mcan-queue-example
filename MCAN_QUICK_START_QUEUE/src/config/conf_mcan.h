@@ -51,33 +51,33 @@
  * Please adjust the message size according to your application.
  */
 /** Range: 1..64 */ 
-#define CONF_MCAN0_RX_FIFO_0_NUM         16     
+#define CONF_MCAN0_RX_FIFO_0_NUM         0     //configured as standard message FIFO by ASF
 /** Range: 1..64 */        
-#define CONF_MCAN0_RX_FIFO_1_NUM         16      
+#define CONF_MCAN0_RX_FIFO_1_NUM         64    //configured as extended message FIFO by ASF
 /** Range: 1..64 */      
-#define CONF_MCAN0_RX_BUFFER_NUM         16
+#define CONF_MCAN0_RX_BUFFER_NUM         0		//disable with 0   
 /** Range: 1..16 */
-#define CONF_MCAN0_TX_BUFFER_NUM         4   
+#define CONF_MCAN0_TX_BUFFER_NUM         0		//disable with 0      
 /** Range: 1..16 */        
-#define CONF_MCAN0_TX_FIFO_QUEUE_NUM     4     
+#define CONF_MCAN0_TX_FIFO_QUEUE_NUM     32    //32 is max per datasheet
 /** Range: 1..32 */       
-#define CONF_MCAN0_TX_EVENT_FIFO         8             
+#define CONF_MCAN0_TX_EVENT_FIFO         8    //disable with 0    
 /** Range: 1..128 */
 #define CONF_MCAN0_RX_STANDARD_ID_FILTER_NUM     32    
 /** Range: 1..64 */
 #define CONF_MCAN0_RX_EXTENDED_ID_FILTER_NUM     16    
 /** Range: 1..64 */
-#define CONF_MCAN1_RX_FIFO_0_NUM         16             
+#define CONF_MCAN1_RX_FIFO_0_NUM         0      //disable with 0, configured as standard message FIFO by ASF  
 /** Range: 1..64 */
-#define CONF_MCAN1_RX_FIFO_1_NUM         16  
+#define CONF_MCAN1_RX_FIFO_1_NUM         64		//disable with 0, configured as standard message FIFO by ASF  
 /** Range: 1..64 */          
-#define CONF_MCAN1_RX_BUFFER_NUM         16      
+#define CONF_MCAN1_RX_BUFFER_NUM         0      //disable with 0   
 /** Range: 1..16 */     
-#define CONF_MCAN1_TX_BUFFER_NUM         4 
+#define CONF_MCAN1_TX_BUFFER_NUM         0      //disable with 0   
 /** Range: 1..16 */     
-#define CONF_MCAN1_TX_FIFO_QUEUE_NUM     4     
+#define CONF_MCAN1_TX_FIFO_QUEUE_NUM     32		//32 is max per datasheet      
 /** Range: 1..32 */        
-#define CONF_MCAN1_TX_EVENT_FIFO         8             
+#define CONF_MCAN1_TX_EVENT_FIFO         0      //disable with 0     
 /** Range: 1..128 */
 #define CONF_MCAN1_RX_STANDARD_ID_FILTER_NUM     32    
 /** Range: 1..64 */
